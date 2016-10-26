@@ -1,0 +1,172 @@
+#!/usr/bin/perl -w -I/opt/eprints3/perl_lib
+
+=pod
+
+=head1 NAME
+
+B<etds_since> - list ETD eprint IDs modified since a date
+
+
+=head1 SYNOPSIS
+
+B<etds_since> - I<repository_id> [B<YYYY-MM-DD>] [B<options>]
+
+=head1 DESCRIPTION
+
+List ETDs by eprint id, since YYYY-MM-DD
+
+This script will:
+
+  - search the repository for items which are of type 'thesis_degree'.
+  - optionally since a specified date in YYYY-MM-DD format
+  - output the ids, one per line
+
+=head1 ARGUMENTS
+
+=over 8
+
+=item B<repository_id>
+
+The ID of the EPrint repository to search.
+
+=item B<YYYY-MM-DD>
+
+The earliest date to match for last modification (optional)
+
+=back
+
+=head1 OPTIONS
+
+=over 8
+
+=item B<--help>
+
+Print a brief help message and exit.
+
+=item B<--man>
+
+Print the full manual page and then exit.
+
+=item B<--quiet>
+
+This option does not do anything.
+
+=item B<--verbose>
+
+Explain in detail what is going on.
+
+=item B<--version>
+
+Output version information and exit.
+
+=back
+
+=head1 AUTHOR
+
+This is developed by the University of Pittsburgh.
+
+=head1 VERSION
+
+EPrints Version: eprints-3.3.15
+
+=cut
+
+use EPrints;
+use Getopt::Long;
+use Pod::Usage;
+use strict;
+use Time::Local;
+use POSIX qw(strftime);
+
+my $version = 0;
+my $verbose = 0;
+my $quiet = 0;
+my $help = 0;
+my $man = 0;
+
+Getopt::Long::Configure("permute");
+
+GetOptions(
+        'help|?' => \$help,
+        'man' => \$man,
+        'version' => \$version,
+        'verbose+' => \$verbose,
+        'silent' => \$quiet,
+        'quiet' => \$quiet
+) || pod2usage( 2 );
+EPrints::Utils::cmd_version( "etds_since" ) if $version;
+pod2usage( 1 ) if $help;
+pod2usage( -exitstatus => 0, -verbose => 2 ) if $man;
+pod2usage( 2 ) if( (scalar @ARGV != 1) && !(scalar @ARGV == 2 && $ARGV[1] =~ m/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/));
+
+our $noise = 1;
+$noise = 0 if( $quiet );
+$noise = 1+$verbose if( $verbose );
+
+# Set STDOUT to auto flush (without needing a \n)
+$|=1;
+
+my $repoid = $ARGV[0];
+my $earliestDate = $ARGV[1];
+my $session = new EPrints::Session( 1 , $repoid , $noise );
+if( !defined $session )
+{
+        print STDERR "Failed to load repository: $repoid\n";
+        exit 1;
+}
+
+my $ds = $session->get_repository->get_dataset( "eprint" );
+
+# Basic Search against eprints
+if( $noise > 1 ) {
+        print STDERR 'Creating a basic eprint search.'."\n";
+}
+my $searchexp = new EPrints::Search(
+                session=>$session,
+                dataset=>$ds );
+
+if( $noise ) {
+        print STDERR 'Listing ETDs since '.($earliestDate ? $earliestDate : 'forever'). "\n";
+}
+
+# Search for ETD's in the live archive.
+if( $noise > 1 ) {
+        print STDERR 'Filtering search by eprint status and type'."\n";
+}
+$searchexp->add_field( $ds->get_field( "eprint_status" ), "archive" );
+$searchexp->add_field( $ds->get_field( "type" ), "thesis_degree" );
+if ($earliestDate) {
+	if( $noise > 1 ) {
+		print STDERR 'Filtering search by last modification date.'."\n";
+	}
+	$searchexp->add_field( $ds->get_field( "lastmod" ), $earliestDate.strftime('-%Y-%m-%d', localtime()) );
+}
+
+if( $noise > 1 ) {
+	print STDERR 'Executing search.'."\n";
+}
+my $list = $searchexp->perform_search;
+
+# For matching documents, print the eprint id
+
+my($count) = 0;
+if ($noise) {
+	print STDERR "Working...";
+}
+$list->map( sub {
+        my( $session, $dataset, $eprint ) = @_;
+
+	print $eprint->get_id."\n";
+	$count++;
+
+	if ($noise && $count % 1000 == 0) {
+		print STDERR " $count...";
+	}
+
+} );
+if ($noise) {
+	print STDERR " done ($count).\n";
+}
+
+$session->terminate();
+

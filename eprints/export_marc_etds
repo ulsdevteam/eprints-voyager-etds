@@ -1,0 +1,70 @@
+#!/bin/bash
+# This script will export new ETDs from d-scholarship in MARC format for ingest into Voyager
+# No parameters are used; must be run as user "eprints".
+# If new ETDs are found, they will be exported as MARCXML, and then converted to UTF8 MARC
+# This script is intended to be cron'd not more than once daily
+
+# Today's date will be used in filenames (important for sequencing ingest) and to remember the last runtime (for finding new items)
+TODAY=`/bin/date +'%Y-%m-%d'`
+# This file will list the IDs of each ETD record
+ETDIDS=/tmp/etds.$TODAY.ids
+# This file will be the MARCXML export
+MARCXML=/tmp/etds.$TODAY.marcxml
+# This file will be the MARC export
+MARC=/tmp/etds.$TODAY.mrc
+# This is the install location for EPrints
+EPRINTS=/opt/eprints3
+# This is the archive within EPrints which has the ETDs
+ARCHIVE=pittir
+# This is the filesystem location where the sister script on Voyager will look for the MARC files
+PICKUPLOCATION=/var/local/marc_etd/
+# This is the file which remembers the last run time for new file searches.  Delete it for a full export.
+LASTRUNFILE=$EPRINTS/archives/$ARCHIVE/var/marc-export.datestamp
+if [ -e $MARCXML ]
+then
+	(>&2 echo "File $MARCXML exists.")
+	exit 1
+fi
+LASTRUN=
+if [ -e $LASTRUNFILE ]
+then
+	LASTRUN=`<$LASTRUNFILE`
+fi
+echo 'Collecting ETDs; Last Run: "'$LASTRUN'"'
+$EPRINTS/bin/etds_since $ARCHIVE --quiet $LASTRUN > "$ETDIDS"
+ETDCOUNT=`/usr/bin/wc -l < "$ETDIDS"`
+echo 'Found: '$ETDCOUNT
+if [ "$ETDCOUNT" = "0" ]
+then
+	exit 0
+fi
+echo 'Exporting records'
+/usr/bin/xargs $EPRINTS/bin/export pittir eprint XSLT::MARCXML < "$ETDIDS" >> "$MARCXML"
+ERROR=$?
+if [ "$ERROR" != "0" ]
+then
+	(>&2 echo "File $MARCXML not processed correctly; Error: $ERROR")
+	exit 1
+fi
+echo 'Converting records from MARCXML to MARC'
+/usr/local/bin/yaz-marcdump -i marcxml -o marc -f UTF-8 -t UTF-8 -l 9=97 -v "$MARCXML" > "$MARC"
+ERROR=$?
+if [ "$ERROR" != "0" ]
+then
+	(>&2 echo "File $MARC not processed correctly; Error: $ERROR")
+	exit 1
+fi
+echo 'Verifying output'
+ETDRECOUNT=`/usr/local/bin/yaz-marcdump -i marc -f UTF-8 -p -n "$MARC" | /usr/bin/tail -1 | /bin/grep '^<!-- Record ' | /bin/cut -d' ' -f3`
+if [ "$ETDCOUNT" != "$ETDRECOUNT" ]
+then
+	(>&2 echo "Expected $ETDCOUNT records, but processed $ETDRECOUNT records.")
+	exit 1
+fi
+echo 'Staging records for transfer to Voyager'
+chgrp voyager $MARC
+mv $MARC $PICKUPLOCATION
+echo 'Cleaning up'
+echo $TODAY > $LASTRUNFILE
+rm "$ETDIDS"
+rm "$MARCXML"
