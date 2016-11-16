@@ -19,7 +19,7 @@ PROCESSED=$ETDIMPORT/processed
 SERVER=d-scholarship-dev.library.pitt.edu
 if [ `hostname` = 'voy-web-prod-01.cssd.pitt.edu' ]
 then
-	SERVER=d-scholarship.library.pitt.edu
+	SERVER=d-scholarship.pitt.edu
 fi
 # This is where the to-be-processed files live on the remote server
 PICKUP=/var/local/marc_etd
@@ -47,7 +47,7 @@ do
 		marcfile=`basename $marc`
 		echo '... '$marcfile
 		mv $marc $PROCESSED/$marcfile
-		/m1/voyager/pittdb/sbin/Pbulkimport -iETD -oETD -f$PROCESSED/$marcfile
+		/m1/voyager/pittdb/sbin/Pbulkimport -Nulsimports@mail.pitt.edu -iETD -oETD -f$PROCESSED/$marcfile
 		if [ "$!?" = "1" ]
 		then
 			echo 'The Pbulkimport processed aborted with a trappable error, resetting '$marcfile
