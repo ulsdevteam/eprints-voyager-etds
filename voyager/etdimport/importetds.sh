@@ -17,7 +17,7 @@ PROCESSING=$ETDIMPORT/processing
 PROCESSED=$ETDIMPORT/processed
 # The server is set to d-scholarship development, unless our hostname is production
 SERVER=d-scholarship-dev.library.pitt.edu
-if [ `hostname` = 'voy-web-prod-01.cssd.pitt.edu' ]
+if [ `hostname` = 'voy-web-prod-01.cssd.pitt.edu' -o `hostname` = 'voy-web-prod-02.cssd.pitt.edu' ]
 then
 	SERVER=d-scholarship.pitt.edu
 fi
